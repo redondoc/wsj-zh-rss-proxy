@@ -1,6 +1,8 @@
 name: Fetch WSJ RSS
 
-# 每 15 分钟抓一次，也可以手动触发
+permissions:
+  contents: write
+
 on:
   schedule:
     - cron: "*/15 * * * *"

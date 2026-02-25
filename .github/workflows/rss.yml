@@ -2,30 +2,44 @@ name: Fetch WSJ RSS
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/15 * * * *"  # 每 15 分钟抓取一次
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Fetch RSS with browser user-agent
+      - name: Fetch latest WSJ headlines
         run: |
-          curl -L \
-          -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" \
-          https://cn.wsj.com/rss-news-and-feeds/zh-hans \
-          -o rss.xml
+          # 抓取首页最新文章链接
+          curl -s -A "Mozilla/5.0" https://cn.wsj.com/ | \
+          grep -oP '<a class="WSJTheme--headline.*?href="\K[^"]+' | \
+          head -n 10 > latest_links.txt
 
-      - name: Deploy to gh-pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: .
+          # 生成 RSS 文件
+          echo '<?xml version="1.0" encoding="UTF-8" ?>' > rss.xml
+          echo '<rss version="2.0"><channel>' >> rss.xml
+          echo '<title>WSJ 中文网 RSS</title>' >> rss.xml
+          echo '<link>https://cn.wsj.com/</link>' >> rss.xml
+          echo '<description>WSJ 中文网最新文章标题</description>' >> rss.xml
+
+          while read url; do
+            title=$(curl -s $url | grep -oP '<title>\K.*?(?=</title>)' | head -n1)
+            echo '<item>' >> rss.xml
+            echo "<title>$title</title>" >> rss.xml
+            echo "<link>$url</link>" >> rss.xml
+            echo '</item>' >> rss.xml
+          done < latest_links.txt
+
+          echo '</channel></rss>' >> rss.xml
+
+      - name: Commit if changed
+        run: |
+          git config --global user.name "rss-bot"
+          git config --global user.email "rss-bot@example.com"
+          git add rss.xml
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update RSS"
+          git push

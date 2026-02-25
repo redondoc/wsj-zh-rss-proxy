@@ -25,20 +25,21 @@ jobs:
           python3 - <<'EOF'
           from feedgen.feed import FeedGenerator
           import feedparser
-
+          
+          # RSS 源
           source_url = 'https://news.google.com/rss/search?q=site:cn.wsj.com&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'
           d = feedparser.parse(source_url)
-
+          
           fg = FeedGenerator()
           fg.title('WSJ 中文网标题 RSS (Google News)')
           fg.link(href='https://redondoc.github.io/wsj-zh-rss-proxy/docs/rss.xml')
           fg.description('仅标题和链接，适合 Feedly 订阅')
-
+          
           for entry in d.entries:
               fe = fg.add_entry()
               fe.title(entry.title)
               fe.link(href=entry.link)
-
+          
           fg.rss_file('docs/rss.xml')
           EOF
 
@@ -48,4 +49,4 @@ jobs:
           git config --global user.email "redondoc@example.com"
           git add docs/rss.xml
           git diff --quiet && git diff --staged --quiet || git commit -m "Update RSS"
-          git push
+          git push origin main

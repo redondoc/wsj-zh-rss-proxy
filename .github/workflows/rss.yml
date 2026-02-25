@@ -21,26 +21,34 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-pip
-          pip3 install feedgen feedparser
-
+          pip3 install feedgen requests beautifulsoup4
           python3 - <<'EOF'
+          import requests
+          from bs4 import BeautifulSoup
           from feedgen.feed import FeedGenerator
-          import feedparser
 
-          # 官方 WSJ 中文 RSS 源（真实 XML，可抓标题）
-          source_url = 'https://cn.wsj.com/rss/China.rss'
-
-          d = feedparser.parse(source_url)
+          # 官方 WSJ 中文 RSS 页面（HTML，不是标准 RSS）
+          source_url = 'https://cn.wsj.com/rss-news-and-feeds/zh-hans'
+          headers = {'User-Agent': 'Mozilla/5.0'}
+          r = requests.get(source_url, headers=headers)
+          r.raise_for_status()
+          soup = BeautifulSoup(r.content, 'html.parser')
 
           fg = FeedGenerator()
           fg.title('WSJ 中文网标题 RSS')
           fg.link(href='https://redondoc.github.io/wsj-zh-rss-proxy/docs/rss.xml')
           fg.description('仅标题和链接，适合 Feedly 订阅')
 
-          for entry in d.entries:
-              fe = fg.add_entry()
-              fe.title(entry.title)
-              fe.link(href=entry.link)
+          # 提取新闻标题和链接
+          for a in soup.select('a[data-type="story"]'):
+              title = a.get_text(strip=True)
+              link = a.get('href')
+              if link and title:
+                  if link.startswith('/'):
+                      link = 'https://cn.wsj.com' + link
+                  fe = fg.add_entry()
+                  fe.title(title)
+                  fe.link(href=link)
 
           fg.rss_file('docs/rss.xml')
           EOF

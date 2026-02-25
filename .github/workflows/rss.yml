@@ -1,6 +1,6 @@
 name: Fetch WSJ RSS
 
-# 每 15 分钟抓取一次，也可以手动触发
+# 每 15 分钟抓一次，也可以手动触发
 on:
   schedule:
     - cron: "*/15 * * * *"
@@ -17,33 +17,30 @@ jobs:
       - name: Ensure docs directory exists
         run: mkdir -p docs
 
-      - name: Fetch WSJ titles only and generate RSS
+      - name: Fetch WSJ RSS titles only
         run: |
-          # 安装依赖
           sudo apt-get update
           sudo apt-get install -y python3-pip
-          pip3 install feedgen requests beautifulsoup4
+          pip3 install feedgen feedparser
 
-          # Python 脚本抓取标题和链接，生成 RSS
           python3 - <<'EOF'
-          import requests
-          from bs4 import BeautifulSoup
           from feedgen.feed import FeedGenerator
+          import feedparser
 
-          url = 'https://cn.wsj.com/rss-news-and-feeds/zh-hans'
-          r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
-          r.raise_for_status()
+          # 官方 WSJ 中文 RSS 源（真实 XML，可抓标题）
+          source_url = 'https://cn.wsj.com/rss/China.rss'
 
-          soup = BeautifulSoup(r.content, 'xml')
+          d = feedparser.parse(source_url)
+
           fg = FeedGenerator()
           fg.title('WSJ 中文网标题 RSS')
           fg.link(href='https://redondoc.github.io/wsj-zh-rss-proxy/docs/rss.xml')
           fg.description('仅标题和链接，适合 Feedly 订阅')
 
-          for item in soup.find_all('item'):
+          for entry in d.entries:
               fe = fg.add_entry()
-              fe.title(item.title.text)
-              fe.link(href=item.link.text)
+              fe.title(entry.title)
+              fe.link(href=entry.link)
 
           fg.rss_file('docs/rss.xml')
           EOF

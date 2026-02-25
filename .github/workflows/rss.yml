@@ -1,0 +1,28 @@
+name: Fetch WSJ RSS
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Fetch RSS with browser user-agent
+        run: |
+          curl -L \
+          -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" \
+          https://cn.wsj.com/rss-news-and-feeds/zh-hans \
+          -o rss.xml
+
+      - name: Commit if changed
+        run: |
+          git config --global user.name "rss-bot"
+          git config --global user.email "rss-bot@example.com"
+          git add rss.xml
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update RSS"
+          git push

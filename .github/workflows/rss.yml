@@ -1,4 +1,4 @@
-name: Fetch WSJ RSS
+name: Update WSJ RSS
 
 # 每 15 分钟抓一次，也可以手动触发
 on:
@@ -7,46 +7,61 @@ on:
   workflow_dispatch:
 
 jobs:
-  fetch:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      # 1. 检出仓库
+      - uses: actions/checkout@v4
 
-      - name: Ensure docs directory exists
+      # 2. 拉取 Google News RSS（WSJ 中文）
+      - name: Fetch Google News RSS
+        run: |
+          curl -L "https://news.google.com/rss/search?q=site:cn.wsj.com&hl=zh-CN&gl=CN&ceid=CN:zh-Hans" -o source.xml
+
+      # 3. 确保 docs 目录存在
+      - name: Ensure docs directory
         run: mkdir -p docs
 
-      - name: Fetch WSJ RSS titles only
+      # 4. 生成干净 RSS（标题+链接）
+      - name: Generate Clean RSS
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-pip
-          pip3 install feedgen feedparser
-          python3 - <<'EOF'
-          from feedgen.feed import FeedGenerator
-          import feedparser
+          python3 <<EOF
+          import xml.etree.ElementTree as ET
 
-          # 官方 WSJ 中文 RSS XML（真实 RSS，可抓标题）
-          source_url = 'https://cn.wsj.com/rss/China.rss'
-          d = feedparser.parse(source_url)
+          # 解析源 RSS
+          tree = ET.parse("source.xml")
+          root = tree.getroot()
+          channel = root.find("channel")
+          items = channel.findall("item")
 
-          fg = FeedGenerator()
-          fg.title('WSJ 中文网标题 RSS')
-          fg.link(href='https://redondoc.github.io/wsj-zh-rss-proxy/docs/rss.xml')
-          fg.description('仅标题和链接，适合 Feedly 订阅')
+          # 新建 RSS
+          rss = ET.Element("rss", version="2.0")
+          new_channel = ET.SubElement(rss, "channel")
+          ET.SubElement(new_channel, "title").text = "WSJ 中文 - Clean Feed"
+          ET.SubElement(new_channel, "link").text = "https://cn.wsj.com/"
+          ET.SubElement(new_channel, "description").text = "WSJ 中文最新文章（标题+链接）"
 
-          for entry in d.entries:
-              fe = fg.add_entry()
-              fe.title(entry.title)
-              fe.link(href=entry.link)
+          # 遍历前 30 条
+          for item in items[:30]:
+              title = item.find("title").text
+              link = item.find("link").text
 
-          fg.rss_file('docs/rss.xml')
+              new_item = ET.SubElement(new_channel, "item")
+              ET.SubElement(new_item, "title").text = title
+              ET.SubElement(new_item, "link").text = link
+              ET.SubElement(new_item, "guid").text = link
+
+          # 保存到 docs/wsj.xml
+          tree = ET.ElementTree(rss)
+          tree.write("docs/wsj.xml", encoding="utf-8", xml_declaration=True)
           EOF
 
-      - name: Commit RSS if changed
+      # 5. 提交并推送
+      - name: Commit and Push
         run: |
-          git config --global user.name "rss-bot"
-          git config --global user.email "rss-bot@example.com"
-          git add docs/rss.xml
-          git diff --quiet && git diff --staged --quiet || git commit -m "Update RSS"
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add docs/wsj.xml
+          git commit -m "Update RSS" || echo "No changes"
           git push

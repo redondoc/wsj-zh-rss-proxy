@@ -1,41 +1,73 @@
-name: Fetch WSJ RSS
+name: Fetch WSJ Chinese RSS
 
+# 每 15 分钟运行一次，也可以手动触发
 on:
   schedule:
-    - cron: "*/15 * * * *"  # 每 15 分钟抓取一次
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
     steps:
+      # Step 1: Checkout 仓库
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Fetch latest WSJ headlines
+      # Step 2: 安装依赖（Python + feedgen）
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
         run: |
-          # 抓取首页最新文章链接
-          curl -s -A "Mozilla/5.0" https://cn.wsj.com/ | \
-          grep -oP '<a class="WSJTheme--headline.*?href="\K[^"]+' | \
-          head -n 10 > latest_links.txt
+          python -m pip install --upgrade pip
+          pip install requests feedgen beautifulsoup4
 
-          # 生成 RSS 文件
-          echo '<?xml version="1.0" encoding="UTF-8" ?>' > rss.xml
-          echo '<rss version="2.0"><channel>' >> rss.xml
-          echo '<title>WSJ 中文网 RSS</title>' >> rss.xml
-          echo '<link>https://cn.wsj.com/</link>' >> rss.xml
-          echo '<description>WSJ 中文网最新文章标题</description>' >> rss.xml
+      # Step 3: Fetch WSJ 中文网最新文章并生成 rss.xml
+      - name: Generate RSS
+        run: |
+          cat > generate_rss.py << 'EOF'
+          import requests
+          from bs4 import BeautifulSoup
+          from feedgen.feed import FeedGenerator
+          import datetime
 
-          while read url; do
-            title=$(curl -s $url | grep -oP '<title>\K.*?(?=</title>)' | head -n1)
-            echo '<item>' >> rss.xml
-            echo "<title>$title</title>" >> rss.xml
-            echo "<link>$url</link>" >> rss.xml
-            echo '</item>' >> rss.xml
-          done < latest_links.txt
+          # WSJ 中文网首页
+          url = "https://cn.wsj.com/rss-news-and-feeds/zh-hans"
 
-          echo '</channel></rss>' >> rss.xml
+          headers = {
+              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/122.0.0.0 Safari/537.36"
+          }
 
+          resp = requests.get(url, headers=headers, timeout=20)
+          resp.raise_for_status()
+
+          soup = BeautifulSoup(resp.content, "xml")
+
+          fg = FeedGenerator()
+          fg.title("WSJ 中文网 RSS")
+          fg.link(href="https://cn.wsj.com", rel="alternate")
+          fg.description("自动抓取 WSJ 中文网最新文章")
+          fg.language("zh-CN")
+
+          for item in soup.find_all("item")[:50]:  # 最多抓 50 条
+              fe = fg.add_entry()
+              fe.title(item.title.text)
+              fe.link(href=item.link.text)
+              fe.pubDate(item.pubDate.text if item.pubDate else datetime.datetime.now())
+              if item.description:
+                  fe.description(item.description.text)
+
+          fg.rss_file("rss.xml")
+          EOF
+
+          python generate_rss.py
+
+      # Step 4: 提交变更
       - name: Commit if changed
         run: |
           git config --global user.name "rss-bot"

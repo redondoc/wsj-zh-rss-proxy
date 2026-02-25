@@ -26,9 +26,7 @@ jobs:
           from feedgen.feed import FeedGenerator
           import feedparser
 
-          # Google News RSS：只抓 WSJ 中文站
           source_url = 'https://news.google.com/rss/search?q=site:cn.wsj.com&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'
-
           d = feedparser.parse(source_url)
 
           fg = FeedGenerator()
@@ -46,8 +44,8 @@ jobs:
 
       - name: Commit RSS if changed
         run: |
-          git config --global user.name "rss-bot"
-          git config --global user.email "rss-bot@example.com"
+          git config --global user.name "redondoc"
+          git config --global user.email "redondoc@example.com"
           git add docs/rss.xml
           git diff --quiet && git diff --staged --quiet || git commit -m "Update RSS"
           git push

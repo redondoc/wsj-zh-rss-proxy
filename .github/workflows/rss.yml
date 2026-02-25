@@ -1,8 +1,6 @@
 name: Fetch WSJ RSS
 
-permissions:
-  contents: write
-
+# 每 15 分钟抓一次，也可以手动触发
 on:
   schedule:
     - cron: "*/15 * * * *"
@@ -16,15 +14,43 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          npm init -y
+          npm install playwright rss
+
       - name: Ensure docs directory exists
         run: mkdir -p docs
 
-      - name: Fetch WSJ RSS with browser user-agent
+      - name: Fetch WSJ RSS with Playwright
         run: |
-          curl -L \
-          -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36" \
-          https://cn.wsj.com/rss-news-and-feeds/zh-hans \
-          -o docs/rss.xml
+          node <<'EOF'
+          const fs = require('fs');
+          const { chromium } = require('playwright');
+          const RSS = require('rss');
+
+          (async () => {
+            const browser = await chromium.launch();
+            const page = await browser.newPage();
+
+            // 打开 WSJ 中文 RSS 页面
+            await page.goto('https://cn.wsj.com/rss-news-and-feeds/zh-hans', { waitUntil: 'networkidle' });
+
+            // 获取 RSS XML 或文章列表
+            const content = await page.content();
+
+            // 保存原始页面内容（如果网站提供的是 XML 直接用）
+            // 如果是 HTML，需要解析成标准 RSS，这里简单存成文件以验证抓取
+            fs.writeFileSync('docs/rss.xml', content);
+
+            await browser.close();
+          })();
+          EOF
 
       - name: Commit RSS if changed
         run: |
